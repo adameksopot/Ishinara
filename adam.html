@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html>
+ 
+<head>
+    <meta charset="UTF-8">
+    <title>Test postrzegania kolorów Ishihara</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+ 
+        /* Create three equal columns that floats next to each other */
+        .column {
+            float: left;
+            width: 33.33%;
+ 
+        }
+ 
+        /* Clear floats after the columns */
+        .row {
+ 
+            display: table;
+            clear: both;
+        }
+    </style>
+    <script src="jquery-3.5.1.js"></script>
+</head>
+ 
+<body>
+ 
+    <form>
+        <label for="DOTS_TO_RENDER">Liczba punktów do wygenerowania [100,500]</label>
+        <input type="range" min="100" max="500" step="10" onchange="updateDotsToRender()" id="DOTS_TO_RENDER" />
+        <span id="DOTS_TO_RENDER_val"></span>
+        <br />
+        <label for="CANVAS_SIZE">Rozmiar tablicy Isihary [200,600]</label>
+        <input type="range" min="200" max="600" step="10" value="300" onchange="updateCanvasSize()" id="CANVAS_SIZE" />
+        <span id="CANVAS_SIZE_val"></span>
+        <br />
+    </form>
+   
+    <div class="row" style="text-align:center;border-radius: 5px; border: 1px solid #000; padding: 5px;">
+        <div class="column"><canvas id="c" width="300" height="300"></canvas></div>
+        <div class="column"><canvas id="d" width="300" height="300"></canvas></div>
+        <div class="column"><canvas id="e" width="300" height="300"></canvas></div>
+        <div class="column"><canvas id="f" width="300" height="300"></canvas></div>
+        <div class="column"><canvas id="g" width="300" height="300"></canvas></div>
+        <div class="column"><canvas id="h" width="300" height="300"></canvas></div>
+   
+ </div>
+    <div style="text-align:center; border-radius: 5px; border: 5px solid #000; padding: 5px; margin-top: 10px;"
+        id="HUMAN_INPUT_BOX">
+        <input type="button" value="Generuj" onclick="generateDotMap();" />
+        <input type="button" value="Zobacz numery" onclick="drawDotMap(window.saved_dots, true);" />
+        <input type="button" value="Przywroc" onclick="drawDotMap(window.saved_dots, false);" />
+        <button type="submit"  onClick="refreshPage()">Odswiez</button>
+ 
+        <form> <br><br>
+            <input type="text" placeholder="I kolumna" id="HUMAN_INPUT_1" required />
+            <input type="text" placeholder="II kolumna" id="HUMAN_INPUT_2" required />
+            <input type="text" placeholder="III kolumna" id="HUMAN_INPUT_3" required /><br>
+            <input type="text" placeholder="IV kolumna" id="HUMAN_INPUT_4" required />
+            <input type="text" placeholder="V kolumna" id="HUMAN_INPUT_5" required />
+            <input type="text" placeholder="VI kolumna" id="HUMAN_INPUT_6" required /></br></br>
+            <input type ="text" name ="id" placeholder="Indeks studenta" required/>
+            <input type ="text" name ="name_first" placeholder="Imie" required/>
+            <input type ="text" name ="name_last" placeholder="Nazwisko "required/></br>
+            <input type="submit" value="Wyslij do bazy" onclick="handleSubmit()"  /></form>
+        <br><br>
+            </form>
+           <form>
+            <input type="button" value="Sprawdź" onclick="checkHumanInput();" /></form>
+            <form action="pokazdane.php" method ="GET">
+
+                <input type ="submit" value = "Pokaz"/>
+              </form>
+    </div>
+    <div style="text-align:center; border-radius: 5px; border: 5px solid #000; padding: 5px; margin-top: 10px;">
+        <h2>Wyniki testu</h2>
+        <table style="width:100%">
+            <tr>
+                <th>Odpowiedzi WPISANE :</th>
+                <td id="jeden"></td>
+            </tr>
+            <tr>
+                <th>Odpowiedzi WYGENEROWANE :</th>
+                <td>
+                    <div id="randomNumbers"></div>
+                </td>
+            </tr>
+            </tr>
+            <tr>
+                <th>PUNKTY: :</th>
+                <td>
+                    <div id="pkt"></div>
+                </td>
+            </tr>
+            </tr>
+        </table>
+    </div>
+    <script>
+        window.saved_dots = []
+        //liczba kropek z jakiej będzie się składała tabliczka
+        var DOTS_TO_RENDER = 400;
+ 
+        // ustawienia rozkładu normalnego
+        var DOT_SIZE_mean = 0.04;
+        var DOT_SIZE_var = 0.008;
+        let punkty=[]
+        // minimalny odstęp między kropkami
+        var MIN_DISTANCE = 1.0 / 400;
+ 
+        var HUE_NUMBER = 10;
+        var HUE_BACKGROUND = 70;
+        var HUE_VARIANCE = 30;
+        var SATURATION = 50;
+        var VALUE = 70;
+        const areacanvas = ['c', 'd', 'e', 'f', 'g', 'h']
+        let ArrayNb = [];
+ 
+            function getGaussianRandom(mean, stdDev) {
+            var S, N;
+            do {
+                var U = Math.random() * 2 - 1;
+                var V = Math.random() * 2 - 1;
+                S = Math.pow(U, 2) + Math.pow(V, 2);
+            } while (S > 1);
+ 
+            N = mean + stdDev * U * Math.sqrt(-2 * Math.log(S) / S);
+ 
+            N = Math.abs(N);
+ 
+            return N;
+        }
+ 
+        function getRandomPointInCircle() {
+            var distanceFromCenter = Math.random();
+ 
+            var angle = Math.random() * 2 * Math.PI;
+ 
+            x = distanceFromCenter * Math.cos(angle);
+            y = distanceFromCenter * Math.sin(angle);
+            return { x: x, y: y };
+        }
+ 
+        function distanceCalc(d1, d2) {
+            return Math.sqrt(Math.pow(d1[0] - d2[0], 2) + Math.pow(d1[1] - d2[1], 2));
+        }
+ 
+        function distanceCheck(d1, d2) {
+            var distance = distanceCalc(d1, d2);
+            return distance <= d1[2] + d2[2] + MIN_DISTANCE;
+        }
+ 
+        function generateDotMap() {
+            var randomNumDiv = document.getElementById("randomNumbers");
+            for (let index = 0; index < areacanvas.length; index++) {
+                var canvas = document.getElementById(areacanvas[index]);
+                var ctx = canvas.getContext('2d');
+ 
+                // white background
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, parseInt(canvas.width), parseInt(canvas.height));
+ 
+ 
+                var canvasCenter = {
+                    x: Math.floor(canvas.width / 2) - 20,
+                    y: Math.floor(canvas.height / 2) - 20
+                };
+ 
+ 
+                // dots array
+                var dots = [];
+ 
+                // generate random number
+                window.generatedNumber = (Math.floor(Math.random() * 89) + 10).toString();
+                //    randomNumDiv.innerHTML = randomNumDiv.innerHTML + " " + generatedNumber;
+                // number as black text
+                ctx.font = 'italic bold ' + (canvasCenter.y + Math.floor(canvas.height / 5)) + 'px "Comic Sans MS"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#000000';
+                ctx.fillText(window.generatedNumber, canvasCenter.x - Math.floor(canvasCenter.x / 7), canvasCenter.y - Math.floor(canvasCenter.y / 16));
+ 
+                for (var i = 0; i < DOTS_TO_RENDER; i++) {
+                    var x, y, radius, j;
+ 
+                    // loop
+                    do {
+                        // get point inside of a cricle
+                        var point = getRandomPointInCircle();
+ 
+                        // radius
+                        var radius = getGaussianRandom(DOT_SIZE_mean, DOT_SIZE_var);
+ 
+ 
+                        j = 0;
+                        for (; j < i; j++) {
+                            if (distanceCheck([point.x, point.y, radius], dots[j])) {
+                                break;
+                            }
+                        }
+                    } while (j != i);
+ 
+                    // get canvas coordinates
+                    var hX = point.x * canvasCenter.x + canvasCenter.x;
+                    var hY = canvasCenter.x - point.y * canvasCenter.y;
+                    var overNumber = ctx.isPointInPath(hX, hY);
+ 
+ 
+                    //   ctx.getImageData(point.x,point.y,ctx.width,ctx.height);
+                    //  [redColor, greenColor, blueColor, alpha]
+                    var overNumber = (ctx.getImageData(hX, hY, 1, 1).data[0] == 0);
+ 
+                    if (overNumber) {
+                        color = hsvToRgb(HUE_NUMBER + Math.random() * HUE_VARIANCE, SATURATION, VALUE + 10);
+                    } else {
+                        color = hsvToRgb(HUE_BACKGROUND + Math.random() * HUE_VARIANCE, SATURATION, VALUE);
+                    }
+                    dots.push([point.x, point.y, radius, overNumber, color]);
+                }
+ 
+ 
+                // powiększanie kropek (wypełnienie)
+                // sortowanie od najmniejszej do największej, małe powiększane najpierw
+                dots.sort(function (a, b) { return a[2] - b[2] });
+                for (var pass = 0; pass < 2; pass++) {
+                    for (var j = 0; j < dots.length; j++) {
+                        var small_d = 99999;
+                        for (var k = 0; k < dots.length; k++) {
+                            if (j == k) {
+                                continue;
+                            }
+                            var d = distanceCalc(dots[j], dots[k]) - (dots[j][2] + dots[k][2] + MIN_DISTANCE);
+ 
+                            if (d < small_d) {
+                                small_d = d;
+                            }
+                        }
+                        if (small_d > 0) {
+                            dots[j][2] += small_d;
+                        }
+                    }
+                    dots.sort(function (a, b) { return a[2] - b[2] });
+                }
+                window.saved_dots.push(dots)
+                ArrayNb.push(generatedNumber)
+            }
+            drawDotMap(window.saved_dots, false);
+        }
+ 
+        function drawDotMap(dots, highlight, index) {
+            for (let index = 0; index < areacanvas.length; index++) {
+                const d = dots[index]
+                var canvas = document.getElementById(areacanvas[index]);
+                canvas.width = canvas.width;
+                var ctx = canvas.getContext('2d');
+                var radius = Math.floor(Math.min(canvas.width, canvas.height) / 2) - 20;
+                for (var i = 0; i < d.length; i++) {
+                    var dot = d[i];
+                    var color = dot[4];
+                    ctx.globalAlpha = 1.0;
+                    if (!dot[3] && highlight) {
+                        ctx.globalAlpha = 0.25;
+                    }
+                    ctx.fillStyle = 'rgb(' + color[0] + ',' + color[1] + ',' + color[2] + ')';
+                    ctx.beginPath();
+                    // ctx.arc(x,y,r,sAngle,eAngle,clockwise);
+                    ctx.arc(20 + dot[0] * radius + radius, 20 + radius - dot[1] * radius, dot[2] * radius, 0, 2 * Math.PI, false);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+        }
+ 
+        function hsvToRgb(h, s, v) {
+            var r, g, b;
+            var i;
+            var f, p, q, t;
+ 
+            // Make sure our arguments stay in-range
+            h = Math.max(0, Math.min(360, h));
+            s = Math.max(0, Math.min(100, s));
+            v = Math.max(0, Math.min(100, v));
+ 
+                     s /= 100;
+            v /= 100;
+ 
+            if (s == 0) {
+                // Achromatic (grey)
+                r = g = b = v;
+                return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+            }
+ 
+            h /= 60; // sector 0 to 5
+            i = Math.floor(h);
+            f = h - i; // factorial part of h
+            p = v * (1 - s);
+            q = v * (1 - s * f);
+            t = v * (1 - s * (1 - f));
+ 
+            switch (i) {
+                case 0:
+                    r = v;
+                    g = t;
+                    b = p;
+                    break;
+ 
+                case 1:
+                    r = q;
+                    g = v;
+                    b = p;
+                    break;
+ 
+                case 2:
+                    r = p;
+                    g = v;
+                    b = t;
+                    break;
+ 
+                case 3:
+                    r = p;
+                    g = q;
+                    b = v;
+                    break;
+ 
+                case 4:
+                    r = t;
+                    g = p;
+                    b = v;
+                    break;
+ 
+                default: // case 5:
+                    r = v;
+                    g = p;
+                    b = q;
+            }
+ 
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }
+ 
+        function updateDotsToRender() {
+            document.getElementById('DOTS_TO_RENDER_val').innerHTML = DOTS_TO_RENDER = parseInt(document.getElementById('DOTS_TO_RENDER').value);
+ 
+        }
+        function updateCanvasSize() {
+            document.getElementById('CANVAS_SIZE_val').innerHTML
+                = document.getElementById('c').width
+                = document.getElementById('c').height
+                = document.getElementById('d').width
+                = document.getElementById('d').height
+                = document.getElementById('e').width
+                = document.getElementById('e').height
+                = document.getElementById('f').width
+                = document.getElementById('f').height
+                = document.getElementById('g').width
+                = document.getElementById('g').height
+                = document.getElementById('h').width
+                = document.getElementById('h').height
+                = parseInt(document.getElementById('CANVAS_SIZE').value);
+        }
+ 
+        var humanInputCheckTimeout = 0;
+     
+        function checkHumanInput() {
+            var myInput1 = document.getElementById('HUMAN_INPUT_1');
+            var myInput2 = document.getElementById('HUMAN_INPUT_2');
+            var myInput3 = document.getElementById('HUMAN_INPUT_3');
+            var myInput4 = document.getElementById('HUMAN_INPUT_4');
+            var myInput5 = document.getElementById('HUMAN_INPUT_5');
+            var myInput6 = document.getElementById('HUMAN_INPUT_6');
+            var myInput7 = document.getElementById('id');
+            var myInput8 = document.getElementById('name_first');
+            var myInput9 = document.getElementById('name_last');
+ 
+ 
+ 
+            if (!myInput1.value.length ||!myInput2.value.length ||!myInput3.value.length ||!myInput4.value.length || !myInput5.value.length ||!myInput6.value.length  ) {
+        console.log('empty');
+        return;
+    }else{
+            let liczba = [];
+            liczba[0] = document.getElementById('HUMAN_INPUT_1').value;
+            liczba[1] = document.getElementById('HUMAN_INPUT_2').value;
+            liczba[2] = document.getElementById('HUMAN_INPUT_3').value;
+            liczba[3] = document.getElementById('HUMAN_INPUT_4').value;
+            liczba[4] = document.getElementById('HUMAN_INPUT_5').value;
+            liczba[5] = document.getElementById('HUMAN_INPUT_6').value;
+            let liczbagen1 = ArrayNb[0];
+            let liczbagen2 = ArrayNb[1];
+            let liczbagen3 = ArrayNb[2];
+            let liczbagen4 = ArrayNb[3];
+            let liczbagen5 = ArrayNb[4];
+            let liczbagen6 = ArrayNb[5];
+            let punkt = 1;
+ 
+ 
+ 
+            if (liczba[0] == liczbagen1)
+                punkty.push(punkt)
+            if (liczba[1] == liczbagen2)
+               punkty.push(punkt)
+            if (liczba[2] == liczbagen3)
+                punkty.push(punkt)
+            if (liczba[3] == liczbagen4)
+                punkty.push(punkt)
+            if (liczba[4] == liczbagen5)
+                punkty.push(punkt)
+            if (liczba[5] == liczbagen6)
+ 
+            punkty.push(punkt)
+ 
+ 
+            document.getElementById('jeden').innerHTML = liczba[0] + " " + liczba[1] + " " + liczba[2] + " " + liczba[3] + " " + liczba[4] + " " + liczba[5] + " ";
+            document.getElementById('randomNumbers').innerHTML = + liczbagen1 + "," + liczbagen2 + "," + liczbagen3 + "," + liczbagen4 + "," + liczbagen5 + "," + liczbagen6 + ".";
+ 
+ 
+          let suma = 0;
+          for (let i = 0; i < punkty.length; i++)
+            suma +=  punkty[i];
+           
+                     
+            document.getElementById('pkt').innerHTML = suma;
+            let MyValue = suma;
+            return MyValue;
+            
+ 
+        }
+        };
+
+ 
+ 
+        document.getElementById('DOTS_TO_RENDER').value = DOTS_TO_RENDER;
+        updateDotsToRender();
+        updateCanvasSize();
+        function refreshPage(){
+    window.location.reload();
+}
+
+function handleSubmit() {
+
+let myValue = checkHumanInput();
+myValue = (myValue/2);
+let id = $('input[name="id"]').val();
+let name_first = $('input[name="name_first"]').val();
+let name_last = $('input[name="name_last"]').val();
+
+$.post( "zaloguj.php", { value: myValue,id:id,name_first:name_first,name_last:name_last });
+}
+
+
+
+    </script>
+</body>
+ 
+</html>
